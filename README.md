@@ -55,34 +55,34 @@ This platform is a comprehensive data science solution designed to predict and s
 ## 📊 Tech Stack
 
 ### 💻 Core Languages & Frameworks
-* **Python 3.10+: Primary engine for data processing and model inference.
+* **Python 3.10+: Primary engine for data processing and model inference.**
 
-* **Pandas & NumPy: High-speed data manipulation and matrix operations.
+* **Pandas & NumPy: High-speed data manipulation and matrix operations.**
 
-* **Scikit-Learn: Preprocessing, scaling, and Random Forest modeling.
+* **Scikit-Learn: Preprocessing, scaling, and Random Forest modeling.**
 
-* **PyTorch: Deep Neural Network and Linear Activation architectures.
+* **PyTorch: Deep Neural Network and Linear Activation architectures.**
 
-* **XGBoost: Gradient Boosted Decision Trees for regressive analysis.
+* **XGBoost: Gradient Boosted Decision Trees for regressive analysis.**
 
 ## ⚡ High-Performance Computing
-* **CUDA 12.x: Leveraged for GPU-accelerated model training and matrix computations.
+* **CUDA 12.x: Leveraged for GPU-accelerated model training and matrix computations.**
 
-* **CuPy: NumPy-compatible array library for GPU-based calculations.
+* **CuPy: NumPy-compatible array library for GPU-based calculations.**
 
 ## 🌐 Web & Deployment
-* **Flask: Backend micro-framework handling UI, routing, and simulation API.
+* **Flask: Backend micro-framework handling UI, routing, and simulation API.**
 
-* **SQLAlchemy: ORM used to interface with the tournament database.
+* **SQLAlchemy: ORM used to interface with the tournament database.**
 
-* **Bootstrap 5: Responsive CSS framework for the front-end dashboard.
+* **Bootstrap 5: Responsive CSS framework for the front-end dashboard.**
 
 ## 🛠️ Development Tools
-* **PyCharm: IDE used for modular code construction.
+* **PyCharm: IDE used for modular code construction.**
 
-* **SQLite: Lightweight relational database for team statistics.
+* **SQLite: Lightweight relational database for team statistics.**
 
-* **GitHub: Version control and project documentation.
+* **GitHub: Version control and project documentation.**
 
 🤝 Connect with Me
 Colt Meyer, MSOL, MSDS | Strategic Data Professional | U.S. Army Captain
