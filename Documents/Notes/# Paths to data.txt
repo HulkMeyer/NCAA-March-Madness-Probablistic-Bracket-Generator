@@ -1,0 +1,236 @@
+# Paths to data
+#CSV_PATH = r"C:\Users\Colt Meyer\OneDrive\Documents\Academics\MSDS\DTSC 691 - Capstone Project\Machine Learning Project\Data Sets\Variable Creation Sheet Work addresses\bracket_data_set.csv"
+CKPT_PATH = r"C:\Users\Colt Meyer\OneDrive\Documents\Academics\MSDS\DTSC 691 - Capstone Project\Machine Learning Project\Data Sets\Bracket Build Data Sets\models\linact_linfea_data.pth"
+
+# Build needed Linear Features DataSet
+lin_fea_columns = ['Year', 'Score', 'Team', 'Seed', 'Opponent Seed', 'NetRtg', 'ORtg_y', 'Bench_BPR', 'DRtg', 'Bench_OBPR', 'SoS_NetRtg', 'eFG%', 
+                   'Starting5_BPR', 'FGA', 'SoS_ORtg', '3PA', 'TS%', 'ORtg_x']
+linear_feature_importance_ds = bracket_data_set[lin_fea_columns]
+
+# Create Test and Train Sets
+test_linear_feature_importance_ds = linear_feature_importance_ds[(linear_feature_importance_ds["Year"] == 2025)]
+test_linear_feature_importance_ds = test_linear_feature_importance_ds.drop(columns=['Year', 'Score'])
+
+LinA_Linfea_Model = torch.load(CKPT_PATH, map_location='cpu', weights_only=True)
+
+def load_expected_features(df: pd.DataFrame) -> list[str]:
+    FEATURES = ['Seed', 'Opponent Seed', 'NetRtg', 'ORtg_y', 'Bench_BPR', 'DRtg', 'Bench_OBPR', 'SoS_NetRtg', 'eFG%', 
+             'Starting5_BPR', 'FGA', 'SoS_ORtg', '3PA', 'TS%', 'ORtg_x']
+    return FEATURES
+        
+    # Last-resort heuristic (not ideal): numeric columns excluding obvious IDs
+    non_feats = {"Team", "Current Round"}
+    numeric_cols = [c for c in df.columns if c not in non_feats and pd.api.types.is_numeric_dtype(df[c])]
+    warnings.warn("Using heuristic numeric columns as EXPECTED_FEATURES. Results may not match the trained model.")
+    # Ensure seeds present for simulation logic
+    for col in ["Seed", "Opponent Seed"]:
+        if col not in numeric_cols:
+            numeric_cols.insert(0, col)
+    return numeric_cols
+
+EXPECTED_FEATURES = load_expected_features(test_linear_feature_importance_ds)
+print(f"Using {len(EXPECTED_FEATURES)} features in correct order for model predictions")
+
+# Create Lookup Friendly DataSet
+lookup_cols = ['Year', 'Team', 'Seed', 'Opponent Seed', 'Current Round', 'NetRtg', 'ORtg_y', 'Bench_BPR', 'DRtg', 'Bench_OBPR', 'SoS_NetRtg', 'eFG%', 
+               'Starting5_BPR', 'FGA', 'SoS_ORtg', '3PA', 'TS%', 'ORtg_x']
+lookup_cols = [c for c in lookup_cols if c in bracket_data_set.columns]
+lookup_df = bracket_data_set[lookup_cols]
+lookup_2025 = lookup_df[lookup_df['Year'] == 2025].copy()
+
+# Model input will be sliced from lookup_2025 using FEATURES
+
+def build_model_input(df: pd.DataFrame, expected: list[str]) -> pd.DataFrame:
+    missing = [c for c in expected if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing expected features: {missing}")
+    return df[expected].astype(np.float32)
+
+# Create Objects and Helper Functions
+@dataclass
+class Team:
+    name: str
+    seed: int
+    stats: dict = field(default_factory=dict)
+    
+def get_team_stats(team_name: str, df: pd.DataFrame) -> pd.Series:
+    team_rows = df[df["Team"] == team_name]
+    if team_rows.empty:
+        print(f"Warning: Team '{team_name}' not found in dataset. Using default values.")
+        zero_stats = {feature: 0.0 for feature in EXPECTED_FEATURES}
+        zero_stats["Team"] = team_name
+        zero_stats["Current Round"] = 64.0
+        zero_stats["Seed"] = 16.0
+        zero_stats["Opponent Seed"] = 1.0
+        return pd.Series(zero_stats)
+
+    if "Current Round" in df.columns:
+        r64 = team_rows[team_rows["Current Round"] == 64]
+        if not r64.empty:
+            return r64.iloc[0]
+    return team_rows.iloc[0]
+  
+class LinActModel(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(LinActModel, self).__init__()
+        self.linear = nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        return self.linear(x)
+
+    def predict(self, X_df: pd.DataFrame) -> np.ndarray:
+        X = torch.tensor(X_df.values, dtype=torch.float32)
+        self.eval()
+        with torch.no_grad():
+            out = self.forward(X)
+        return out.numpy().reshape(-1)
+
+model = LinActModel(input_dim=len(EXPECTED_FEATURES), output_dim=1)
+state = torch.load(CKPT_PATH, map_location="cpu", weights_only=True)
+model.load_state_dict(state)
+model.eval()
+
+def simulate_game(
+    team1: Team,
+    team2: Team,
+    model: LinActModel,
+    df: pd.DataFrame,
+    variation: bool = True,
+    noise_std: float = 1,
+    consistency_multiplier: float = 0.8,
+    apply_normalization: bool = False,
+    current_round: str = "R64",  # default to R64
+    return_score = False
+) -> Union[Team, Tuple[Team, float, float]]:
+
+    """
+    Simulate a single game using model predictions, with optional noise, normalization,
+    and round/seed-aware variance. Clamps R64 upset rates for #1 and #2 seeds.
+    """
+
+    # ---- Seeds and clamp setup ------------------------------------------------
+    seed1, seed2 = int(team1.seed), int(team2.seed)
+    # Identify favorite (lower seed number) and underdog
+    fav_team, dog_team = (team1, team2) if seed1 < seed2 else (team2, team1)
+    fav_seed, dog_seed = (seed1, seed2) if seed1 < seed2 else (seed2, seed1)  
+
+    # Decide if we will force an outcome (no early return; we enforce post-scoring)
+    forced_winner = None
+    # Define forced upset clamp probabilities for R64
+    p_1v16_fav = seed_win_baseline["R64"].get(1, 0.987)
+    p_2v15_fav = seed_win_baseline["R64"].get(2, 0.929)
+    if current_round == "R64":
+        if (fav_seed, dog_seed) == (1, 16):
+            forced_winner = fav_team if np.random.rand() < p_1v16_fav else dog_team
+        elif (fav_seed, dog_seed) == (2, 15):
+            forced_winner = fav_team if np.random.rand() < p_2v15_fav else dog_team
+
+    # ---- Enrich and predict ---------------------------------------------------
+    team1 = enrich_team(team1, df)
+    team2 = enrich_team(team2, df)
+
+    # Opponent context
+    team1.stats["Opponent Seed"] = float(team2.seed)
+    team2.stats["Opponent Seed"] = float(team1.seed)
+
+    # Feature frames
+    t1_feats = {feat: float(team1.stats.get(feat, 0.0)) for feat in EXPECTED_FEATURES}
+    t2_feats = {feat: float(team2.stats.get(feat, 0.0)) for feat in EXPECTED_FEATURES}
+    X_team1 = pd.DataFrame([t1_feats], columns=EXPECTED_FEATURES)
+    X_team2 = pd.DataFrame([t2_feats], columns=EXPECTED_FEATURES)
+
+    # Model predictions
+    team1_pred = float(model.predict(X_team1)[0])
+    team2_pred = float(model.predict(X_team2)[0])
+    print(f"Raw model preds — {team1.name}: {team1_pred:.2f}, {team2.name}: {team2_pred:.2f}")
+
+    # Optional normalization
+    if apply_normalization:
+        team1_pred = normalize_predicted_scores(team1_pred, team1.seed)
+        team2_pred = normalize_predicted_scores(team2_pred, team2.seed)
+
+    # Base win probability (overridden by forced_winner if set)
+    tau = 9.0
+    p_team1_wins = 1.0 / (1.0 + np.exp(-(team1_pred - team2_pred) / tau))
+    # Historical seed-based win probabilities
+    baseline1 = seed_win_baseline.get(current_round, {}).get(team1.seed, 0.5)
+    baseline2 = seed_win_baseline.get(current_round, {}).get(team2.seed, 0.5)
+
+    # Normalize to get baseline win probability for team1
+    baseline_total = baseline1 + baseline2
+    baseline_team1_win_prob = baseline1 / baseline_total if baseline_total > 0 else 0.5
+
+    # Blend model and baseline probabilities
+    blend_weight = 0.25  # You can tune this: 0.0 = pure model, 1.0 = pure historical
+    p_team1_wins_blended = (1 - blend_weight) * p_team1_wins + blend_weight * baseline_team1_win_prob
+    chosen_winner = team1 if np.random.rand() < p_team1_wins_blended else team2
+
+    # ---- Round + seed-aware noise --------------------------------------------
+    mu_pred = np.mean([team1_pred, team2_pred])
+    sigma_pred = np.std([team1_pred, team2_pred])
+
+    # Use round names directly as keys; provide safe fallbacks
+    noise_scale = round_noise_scaling.get(current_round, 1.0)
+    z_round_scale = round_consistency_boost.get(current_round, 1.0)
+
+    # Seed-gap noise dampening in R64 to reduce chaos in mismatches
+    seed_gap = abs(seed1 - seed2)
+    gap_scaler = 1.0
+    if current_round == "R64":
+        # Larger gap => less noise; floor to avoid zeroing variance
+        gap_scaler = max(0.3, 1.0 - 0.05 * seed_gap)
+
+    effective_noise_std = noise_std * noise_scale * gap_scaler
+
+    # Seed-based consistency (higher for top seeds)
+    seed_consistency_1 = max(0.3, 1.0 - (team1.seed - 1) * 0.05)
+    seed_consistency_2 = max(0.3, 1.0 - (team2.seed - 1) * 0.05)
+
+    if variation:
+        t1_noise_std = effective_noise_std * (2.0 - seed_consistency_1) * consistency_multiplier
+        t2_noise_std = effective_noise_std * (2.0 - seed_consistency_2) * consistency_multiplier
+        team1_noise = np.random.normal(0.0, t1_noise_std)
+        team2_noise = np.random.normal(0.0, t2_noise_std)
+    else:
+        team1_noise = team2_noise = 0.0
+
+    t1_pts = calibrated_score(team1_pred, current_round, mu_pred, sigma_pred, noise=team1_noise, z_scale=z_round_scale)
+    t2_pts = calibrated_score(team2_pred, current_round, mu_pred, sigma_pred, noise=team2_noise, z_scale=z_round_scale)
+
+    # ---- Enforce outcome and make scores coherent ----------------------------
+    # If we clamped this matchup, override the sampled winner
+    if forced_winner is not None:
+        chosen_winner = forced_winner
+
+    # Tight games should not end tied; nudge winner up
+    if abs(t1_pts - t2_pts) < 1:
+        delta = np.random.randint(1, 4)
+        if chosen_winner is team1:
+            t1_pts += delta
+        else:
+            t2_pts += delta
+    else:
+        # Ensure the chosen winner actually has more points
+        if chosen_winner is team1 and t1_pts <= t2_pts:
+            t1_pts = max(t2_pts + np.random.randint(1, 3), t1_pts + 1)
+        elif chosen_winner is team2 and t2_pts <= t1_pts:
+            t2_pts = max(t1_pts + np.random.randint(1, 3), t2_pts + 1)
+
+    # Clamp to plausible basketball range
+    t1_pts = float(np.clip(t1_pts, 50.0, 110.0))
+    t2_pts = float(np.clip(t2_pts, 50.0, 110.0))
+
+    # Diagnostics: track score differential
+    score_diff = abs(t1_pts - t2_pts)
+    score_deltas_by_round[current_round].append(score_diff)
+
+    print(f"{team1.name} (#{team1.seed}) {t1_pts:.1f} vs {team2.name} (#{team2.seed}) {t2_pts:.1f} → Winner: {chosen_winner.name}")
+
+    return (chosen_winner, t1_pts, t2_pts) if return_score else chosen_winner
+
+
+
+
+team1_pred                        t1_pts
+
+team2_pred                        t2_pts

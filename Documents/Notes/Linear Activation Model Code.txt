@@ -1,0 +1,100 @@
+Linear Activation Model Code
+
+def train_model(model, optimizer, criterion, train_loader, device, epochs=50):
+    loss_history = []
+    model.to(device)
+    for epoch in range(epochs):
+        model.train()
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            preds = model(xb)
+            loss = criterion(preds, yb)
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+
+        loss_history.append(loss.item())
+        print(f"Epoch {epoch+1}, Loss: {loss.item():.4f}")
+    return loss_history
+
+def check_weights(linact_linfea_data):
+    for name, param in linact_linfea_data.named_parameters():
+        print(f"{name}: NaNs={torch.isnan(param).sum().item()}, Max={param.abs().max().item():.4f}")
+
+linact_linfea_data = LinearModel(input_dim=x_train_tensor.shape[1], output_dim=1).to(device)
+print(check_weights(linact_linfea_data))
+
+# Clean and setup tensors
+x_train_tensor = torch.tensor(x_train_linear_feature_importance_ds.values, dtype=torch.float32)
+y_train_tensor = torch.tensor(y_train_linear_feature_importance_ds.values, dtype=torch.float32).view(-1, 1)
+x_test_tensor = torch.tensor(x_test_linear_feature_importance_ds.values, dtype=torch.float32)
+y_test_tensor = torch.tensor(y_test_linear_feature_importance_ds.values, dtype=torch.float32).view(-1, 1)
+
+# Load data
+train_dataset = TensorDataset(x_train_tensor, y_train_tensor)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+linact_linfea_data = LinearModel(input_dim=x_train_tensor.shape[1], output_dim=1).to(device) # Save this Model Using Pickle for Modeling
+
+model_path = r"C:\Users\coltm\OneDrive\Documents\Academics\MSDS\DTSC 691 - Capstone Project\Machine Learning Project\Data Sets\Bracket Build Data Sets\models\linact_linfea_data.pkl"
+with open(model_path, "wb") as f: pickle.dump(linact_linfea_data, f)
+    
+# Save using different method for Pytorch Model in case pickle does not work due to CUDA issues 
+model_path = r"C:\Users\coltm\OneDrive\Documents\Academics\MSDS\DTSC 691 - Capstone Project\Machine Learning Project\Data Sets\Bracket Build Data Sets\models\linact_linfea_data.pth"
+torch.save(linact_linfea_data.state_dict(), model_path)
+
+# Made Optimizer change to SGD
+optimizer = torch.optim.SGD(linact_linfea_data.parameters(), lr=1e-3, momentum=0.9) # move back up to -3
+criterion = torch.nn.MSELoss()
+loss_history = train_model(linact_linfea_data, optimizer, criterion, train_loader, device, epochs=50)
+
+# Test Model with 2025 data
+linact_linfea_data.eval()
+with torch.no_grad():
+    x_test_tensor = x_test_tensor.to(device)
+    score_preds = linact_linfea_data(x_test_tensor)
+
+# Plot the Predicted vs Actual - How did we do?
+y_test_tensor = torch.tensor(y_test_linear_feature_importance_ds.values, dtype=torch.float32).view(-1, 1).to(device)
+
+# Convert predictions to CPU for plotting
+preds_np = score_preds.cpu().numpy()
+actuals_np = y_test_tensor.cpu().numpy()
+
+plt.scatter(actuals_np, preds_np, alpha=0.6)
+plt.xlabel("Actual Score")
+plt.ylabel("Predicted Score")
+plt.title("Predicted vs Actual")
+plt.plot([actuals_np.min(), actuals_np.max()], [actuals_np.min(), actuals_np.max()], 'r--')  # Identity line
+plt.show()
+
+# Compute RMSE and R-Squared
+y_test_tensor = torch.tensor(y_test_linear_feature_importance_ds.values, dtype=torch.float32).view(-1, 1).to(device)
+
+# Compute metrics
+mse = mean_squared_error(y_test_tensor.cpu(), score_preds.cpu())
+rmse = np.sqrt(mse)
+
+r2 = r2_score(y_test_tensor.cpu(), score_preds.cpu())
+
+print(f"Test RMSE: {rmse:.2f}")
+print(f"Test R-Squared Score: {r2:.4f}")
+
+drift_features = ['Seed', 'Opponent Seed', 'NetRtg', 'ORtg_y', 'Bench_BPR', 'DRtg', 'Bench_OBPR', 'SoS_NetRtg', 'eFG%', 
+                   'Starting5_BPR', 'FGA', 'SoS_ORtg', '3PA', 'TS%', 'ORtg_x']
+
+for col in drift_features:
+    plt.figure(figsize=(6, 3))
+    sns.kdeplot(x_train_linear_feature_importance_ds[col], label="Train", fill=True)
+    sns.kdeplot(x_test_linear_feature_importance_ds[col], label="Test", fill=True)
+    plt.title(f"{col} Distribution (Train vs Test)")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def check_weights(linact_linfea_data):
+    for name, param in linact_linfea_data.named_parameters():
+        print(f"{name}: NaNs={torch.isnan(param).sum().item()}, Max={param.abs().max().item():.4f}")
+
+check_weights(linact_linfea_data)

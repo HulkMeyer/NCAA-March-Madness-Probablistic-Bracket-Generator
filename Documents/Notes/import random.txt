@@ -1,0 +1,249 @@
+import random
+from dataclasses import dataclass
+
+
+@dataclass
+class Team: 
+	name: str
+	seed: int
+
+first_round = [
+    # SOUTH
+    (Team("Auburn", seed=1), Team("Alabama ST/Saint Francis U", seed=16)),
+    (Team("Louisville", seed=8), Team("Creighton", seed=9)),
+    (Team("Michigan", seed=5), Team("UC San Deigo", seed=12)),
+    (Team("Texas A&M", seed=4), Team("Yale", seed=13)),
+    (Team("Ole Miss", seed=6), Team("San Deigo St/North Carolina", seed=11)),
+    (Team("Iowa St.", seed=3), Team("Lipscomb", seed=14)),
+    (Team("Marquette", seed=7), Team("New Mexico", seed=10)),
+    (Team("Michigan St.", seed=2), Team("Bryant", seed=15)),
+    # WEST
+    (Team("Florida", seed=1), Team("Norfolk St.", seed=16)),
+    (Team("UConn", seed=8), Team("Oklahoma", seed=9)),
+    (Team("Memphis", seed=5), Team("Colorado St.", seed=12)),
+    (Team("Maryland", seed=4), Team("Grand Canyon", seed=13)),
+    (Team("Missouri", seed=6), Team("Drake", seed=11)),
+    (Team("Texas Tech", seed=3), Team("UNC Willington", seed=14)),
+    (Team("Kansas", seed=7), Team("Arkansas", seed=10)),
+    (Team("St. John's", seed=2), Team("Omaha", seed=15)),
+    # EAST
+    (Team("Duke", seed=1), Team("America/Mount St Mary's", seed=16)),
+    (Team("Mississippi St.", seed=8), Team("Baylor", seed=9)),
+    (Team("Oregon", seed=5), Team("Liberty", seed=12)),
+    (Team("Arizona", seed=4), Team("Akron", seed=13)),
+    (Team("BYU", seed=6), Team("VCU", seed=11)),
+    (Team("Wisconsin", seed=3), Team("Montana", seed=14)),
+    (Team("Saint Mary's", seed=7), Team("Vanderbilt", seed=10)),
+    (Team("Alabama", seed=2), Team("Robert Morris", seed=15)),
+    # MIDWEST
+    (Team("Houston", seed=1), Team("SIU Edwardsville", seed=16)),
+    (Team("Gonzaga", seed=8), Team("Georgia", seed=9)),
+    (Team("Clemson", seed=5), Team("McNeese", seed=12)),
+    (Team("Purdue", seed=4), Team("High Point", seed=13)),
+    (Team("Illinois", seed=6), Team("Texas/Xavier", seed=11)),
+    (Team("Kentucky", seed=3), Team("Troy", seed=14)),
+    (Team("UCLA", seed=7), Team("Utah St.", seed=10)),
+    (Team("Tennessee", seed=2), Team("Wofford", seed=15)),
+]
+# Test Function Basic
+def simulate_game(team1, team2):
+	if team1.seed == team2.seed:
+		return random.choice([team1, team2])
+	if team1.seed > team2.seed:
+		return team2
+	return team1
+
+first_matchup = first_round[0]
+print(first_matchup)
+
+winner = simulate_game(first_round[0], first_matchup[1])
+print(winner)
+
+#Create a function to simulate full tournament
+
+def simulate_tourney(first_round):
+	current_games = first_round
+	while len(current_games) > 0:
+		print("\n=====New Round======")
+		winners = []
+
+		for team1, team2 in current_games:
+			winner = simulate_game(team1, team2)
+			winners.append(winner)
+		
+		if len(winners) = 1:
+			return winner[0]
+
+		next_round = []
+		for i in range(0, len(winners), 2):
+			# Creates list of winners [1,2,3,4,5,6,...] and pairs them up like [(1,2), (3,4), (5,6), ...]
+			next_round.append((winners [i], winners[i+1]))
+			
+		current_games = next_round
+		
+	return None
+
+# Test function
+winner = simulate_tourney(first_round)
+print(f"\n{winner.name} wins the tournament!")
+
+
+
+# Updated Game simulator
+def simulate_game(team1, team2):
+	team1_seed_weight = 1 / (team1.seed)
+	team2_seed_weight = 1 / (team2.seed)
+
+	# Convert to Probs
+	total = team1_seed_weight + team2_seed_weight
+	team1_prob = 100 * (team1_seed_weight / total)
+	team2_prob = 100 * (team2_seed_weight / total)
+
+	# get winner based on probabilities
+	winner = random.choices([team1, team2], weights = [team1prob, team2_prob], k=1)[0]
+
+	print(
+		f"{team1.name}-{team1.seed} ({team1_prob:.1f}%) vs {team2.name}-{team2.seed} ({team2_prob:.1f}%), Winner: {winner.name}",
+   	 )
+
+	return winner
+
+
+def simulate_tourney(first_round):
+	current_games = first_round
+	while len(current_games) > 0:
+		print("\n=====New Round======")
+		winners = []
+
+		for team1, team2 in current_games:
+			winner = simulate_game(team1, team2)
+			winners.append(winner)
+		
+		if len(winners) = 1:
+			return winner[0]
+
+		next_round = []
+		for i in range(0, len(winners), 2):
+			# Creates list of winners [1,2,3,4,5,6,...] and pairs them up like [(1,2), (3,4), (5,6), ...]
+			next_round.append((winners [i], winners[i+1]))
+			
+		current_games = next_round
+		
+	return None
+
+# Test function
+winner = simulate_tourney(first_round)
+print(f"\n{winner.name} wins the tournament!")
+
+
+My version of the code
+
+def simulate_game(team1, team2):
+    # Create seed winning probabilities
+    # without the weight_mod feature there is around a 96% change the higher seed wins, reality is it is closer to 98%.  This feature allows for movement closer to reality. 
+    weight_mod = 1.1618
+    team1_seed_weight = 1 / (team1.seed**weight_mod)
+    team2_seed_weight = 1 / (team2.seed**weight_mod)
+    total = team1_seed_weight + team2_seed_weight
+    team1_prob = (team1_seed_weight/total)*100
+    team2_prob = (team2_seed_weight/total)*100
+    # Random choice of teams based on weights based on seeds
+    winner = random.choice([team1, team2], weights = [team1_prob, team2_prob], k=1)[0]
+    # Output each winning matchup and their probability
+    print(f"{team1.name} ({team1_prob:.1f}%) vs {team2.name} ({team2_prob:.1f}%), Winner: {winner.name}")
+    return(winner)
+
+
+def simulate_first_four(first_four):    
+    print("\n===== Welcome to the NCAA Tournament Play-In Games =====")
+    first_four_winners = []
+    for team1, team2 in first_four:
+        winners = simulate_game(team1, team2)
+        first_four_winners.append(winners) 
+    # Grab winners to be inserted into main tournament
+    ff1_winner = first_four_winners[0]  
+    ff2_winner = first_four_winners[1]  
+    ff3_winner = first_four_winners[2] 
+    ff4_winner = first_four_winners[3] 
+    
+
+def simulate_tournament(games):
+    # Simulate First Four Play in Games
+    simulate_first_four(first_four)
+    
+    # Simulate Round of 64 - First full round of tournament
+    current_games = first_round
+    print("\n===== Welcome to the Round of 64 =====")
+    round64_winners = []
+    for team1, team2 in current_games:
+        winner = simulate_game(team1, team2)
+        round64_winners.append(winner)
+    round32_matchups = [(round64_winners[i], round64_winners[i+1]) for i in range(0, len(round64_winners), 2)]
+   
+    # Simulate Round 0f 32 - Second full round of tournament
+    print("\n===== Welcome to Round of 32 =====")
+    round32_winners = []
+    for team1, team2 in round32_matchups:
+        winner = simulate_game(team1, team2)
+        round32_winners.append(winner)
+    round16_matchups = [(round32_winners[i], round32_winners[i+1]) for i in range(0, len(round32_winners), 2)]
+   
+    # Simulate Round of 16 - Thrid full round of tournament
+    print("\n===== Welcome to Sweet 16 =====")
+    round16_winners = []
+    for team1, team2 in round16_matchups:
+        winner = simulate_game(team1, team2)
+        round16_winners.append(winner)
+    round8_matchups = [(round16_winners[i], round16_winners[i+1]) for i in range(0, len(round16_winners), 2)]
+    
+    # Simulate Round of 8 - Fourth full round of tournament
+    print("\n===== Welcome to Elite 8 =====")
+    round8_winners = []
+    for team1, team2 in round8_matchups:
+        winner = simulate_game(team1, team2)
+        round8_winners.append(winner)
+    round4_matchups = [(round8_winners[i], round8_winners[i+1]) for i in range(0, len(round8_winners), 2)]
+    
+    # Simulate Round of 4 - Fifth full round of tournament
+    print("\n===== Welcome to Final 4 =====")
+    round4_winners = []
+    for team1, team2 in round4_matchups:
+        winner = simulate_game(team1, team2)
+        round4_winners.append(winner)
+    final_matchup = [(round4_winners[i], round4_winners[i+1]) for i in range(0, len(round4_winners), 2)]
+   
+    # Simulate Championship Round - Final Round of tournament
+    print("\n===== Welcome to Championship =====")
+    champ_winner = []
+    for team1, team2 in final_matchup:
+        winner = simulate_game(team1, team2)
+        champ_winner.append(winner)
+   
+    # Declare Winner
+    if len(champ_winner) == 1:
+        print("\n====="+ str(champ_winner[0].name) + "has one the National Title") 
+    return champ_winner[0]
+            
+simulate_tournament(first_round)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

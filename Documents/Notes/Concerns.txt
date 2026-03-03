@@ -1,0 +1,22 @@
+Concerns 
+When sending data into linear activation and Neural Network models
+	Linear Activation
+		torch.tensor
+		TensorDataset
+		DataLoader
+	Neural Network
+		RobustScaler
+		torch.tensor
+		TensorDataset
+		DataLoader
+	Random Forest 
+		StandardScaler
+	XGBoost
+		StandardScaler
+
+
+
+
+
+
+py -m pip install `cupy-cuda120==13.5.1 `cuopt-cu12 `--extra-index-url https://pypi.nvidia.com `--trusted-host pypi.nvidia.com

@@ -1,0 +1,131 @@
+# ============================================================================
+# MODEL AND DATASET CONFIGURATION - CHANGE THESE FOR DIFFERENT RUNS
+# ============================================================================
+
+# Configuration dictionary for easy swapping
+MODELS = {
+    "random_forest": {
+        "dataset_path": r"C:\Users\Colt Meyer\OneDrive\Documents\Academics\MSDS\DTSC 691 - Capstone Project\Machine Learning Project\Data Sets\Variable Creation Sheet Work addresses\bracket_data_set.csv",
+        "model_path": r"C:\Users\Colt Meyer\OneDrive\Documents\Academics\MSDS\DTSC 691 - Capstone Project\Machine Learning Project\Data Sets\Bracket Build Data Sets\models\rf_bracket_data.pkl",
+        "model_name": "Random Forest"
+    },
+    "xgboost": {
+        "dataset_path": r"C:\path\to\your\xgboost_dataset.csv",
+        "model_path": r"C:\path\to\your\xgboost_model.pkl",
+        "model_name": "XGBoost"
+    },
+    "neural_network": {
+        "dataset_path": r"C:\path\to\your\nn_dataset.csv", 
+        "model_path": r"C:\path\to\your\nn_model.pkl",
+        "model_name": "Neural Network"
+    }
+}
+
+# ============================================================================
+# CHOOSE YOUR MODEL HERE - CHANGE THIS LINE TO SWAP MODELS
+# ============================================================================
+CURRENT_MODEL = "random_forest"  # Change to "xgboost", "neural_network", "linear_activation", a 
+
+
+
+
+
+etc.
+
+# Load the selected model and dataset
+def load_model_and_data(model_key):
+    config = MODELS[model_key]
+    
+    print(f"Loading {config['model_name']} model and dataset...")
+    
+    # Load dataset
+    dataset = pd.read_csv(config['dataset_path'], encoding="ISO-8859-1", header=0)
+    print(f"✅ Dataset loaded: {dataset.shape[0]} rows, {dataset.shape[1]} columns")
+    
+    # Load model
+    with open(config['model_path'], "rb") as f:    
+        model = pickle.load(f)
+    print(f"✅ Model loaded: {config['model_name']}")
+    
+    # Get expected features (this adapts automatically to each model)
+    expected_features = list(model.feature_names_in_)
+    print(f"✅ Using {len(expected_features)} features for predictions")
+    
+    return dataset, model, expected_features, config['model_name']
+
+# ============================================================================
+# LOAD THE SELECTED MODEL AND DATASET
+# ============================================================================
+x_test_bracket_data_set, rf_model, EXPECTED_FEATURES, MODEL_NAME = load_model_and_data(CURRENT_MODEL)
+
+# ============================================================================
+# TOURNAMENT TEAM VALIDATION (Optional but recommended)
+# ============================================================================
+def validate_team_names(df, team_list):
+    """Check if all tournament teams exist in the dataset"""
+    available_teams = set(df['Team'].unique())
+    missing_teams = []
+    
+    for team in team_list:
+        if isinstance(team, tuple):  # For first_four pairs
+            for t in team:
+                if t.name not in available_teams:
+                    missing_teams.append(t.name)
+        else:
+            if team.name not in available_teams:
+                missing_teams.append(team.name)
+    
+    if missing_teams:
+        print(f"⚠️  WARNING: These teams not found in dataset:")
+        for team in missing_teams:
+            print(f"   - {team}")
+        print(f"Available teams: {sorted(list(available_teams))}")
+    else:
+        print(f"✅ All tournament teams found in dataset")
+
+# ============================================================================
+# YOUR EXISTING TOURNAMENT SETUP (No changes needed here)
+# ============================================================================
+# Your existing first_four, first_round, etc. lists stay the same
+
+# ============================================================================
+# ENHANCED SIMULATION FUNCTION WITH MODEL NAME
+# ============================================================================
+def simulate_tournament_with_model_info(model, df, model_name, variation=True, noise_std=2.5, consistency_multiplier=0.7):
+    """Enhanced tournament simulation that displays which model is being used"""
+    print(f"\n{'='*60}")
+    print(f"🏀 MARCH MADNESS TOURNAMENT SIMULATION 🏀")
+    print(f"📊 Using Model: {model_name}")
+    print(f"🎯 Consistency Level: {int((1-consistency_multiplier)*100)}%")
+    print(f"📈 Noise Level: {noise_std}")
+    print(f"{'='*60}")
+    
+    # Validate team names before starting
+    all_tournament_teams = []
+    for team1, team2 in first_four:
+        all_tournament_teams.extend([team1, team2])
+    # Add first_round teams here too if you want full validation
+    
+    validate_team_names(df, all_tournament_teams)
+    print()
+    
+    # Rest of your tournament simulation code goes here...
+    # (Your existing tournament simulation logic)
+    
+    return f"Tournament completed using {model_name}"
+
+# ============================================================================
+# EASY USAGE EXAMPLES
+# ============================================================================
+print("="*60)
+print("🔄 EASY MODEL SWITCHING")
+print("="*60)
+print("To switch models, just change the CURRENT_MODEL variable:")
+print("CURRENT_MODEL = 'random_forest'")
+print("CURRENT_MODEL = 'xgboost'") 
+print("CURRENT_MODEL = 'neural_network'")
+print("="*60)
+
+# Run tournament with current model
+print(f"\n🚀 Running tournament with {MODEL_NAME}...")
+# champion = simulate_tournament_with_model_info(rf_model, x_test_bracket_data_set, MODEL_NAME)

@@ -1,0 +1,182 @@
+# Working with Linear Features First
+# Convert to Tensor
+x_train_tensor = torch.tensor(x_train_linear_feature_importance_ds.values, dtype=torch.float32).to(device)
+y_train_tensor = torch.tensor(y_train_linear_feature_importance_ds.values, dtype=torch.float32).to(device)
+x_test_tensor = torch.tensor(x_test_linear_feature_importance_ds.values, dtype=torch.float32).to(device)
+y_test_tensor = torch.tensor(y_test_linear_feature_importance_ds.values, dtype=torch.float32).to(device)
+
+# Wrap it with DataLoader
+train_dataset = TensorDataset(x_train_tensor, y_train_tensor)
+test_dataset = TensorDataset(x_test_tensor, y_test_tensor)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+# Start building the network
+class MarMad_Neural_Net(nn.Module):
+    def __init__(self, input_dim, hidden_dims, output_dim, activation_fn=nn.ReLU, dropout=0.0):
+        super().__init__()
+        layers = []
+        in_dim = input_dim
+        for h_dim in hidden_dims:
+            layers.append(nn.Linear(in_dim, h_dim))
+            layers.append(activation_fn()) # Allows for changing of activation function
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            in_dim = h_dim
+        layers.append(nn.Linear(in_dim, output_dim))  # Output layer
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.network(x)
+
+# Swap ReLU, ELU, SiLU, other
+model = MarMad_Neural_Net(input_dim, hidden_dims, output_dim, activation_fn=nn.ReLU, dropout=dropout_rate).to(device)
+
+# Loss function options
+criterion = nn.MSELoss()  # or nn.SmoothL1Loss()
+
+# Optimizer with weight decay (L2 regularization)
+optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+
+# Scheduler to decay LR over time
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+
+def train_nn_model(model, train_loader, test_loader, optimizer, scheduler, criterion, epochs=50, device='cuda', use_clip=True,
+    clip_value=1.0, log_every=1):
+
+    model.train()
+    train_loss_history = []
+    test_rmse_history = []
+    test_r2_history = []
+
+    for epoch in range(epochs):
+        running_loss = 0.0
+        for batch in train_loader:
+            inputs, targets = batch
+            inputs, targets = inputs.to(device), targets.to(device)
+
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs.squeeze(), targets)
+            loss.backward()
+
+            if use_clip:
+                nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip_value)
+
+            optimizer.step()
+            running_loss += loss.item()
+
+        scheduler.step()
+        avg_loss = running_loss / len(train_loader)
+        train_loss_history.append(avg_loss)
+
+        # Evaluation
+        model.eval()
+        with torch.no_grad():
+            preds = []
+            true = []
+            for batch in test_loader:
+                inputs, targets = batch
+                inputs = inputs.to(device)
+                outputs = model(inputs)
+                preds.extend(outputs.squeeze().cpu().numpy())
+                true.extend(targets.cpu().numpy())  
+                
+        rmse = np.sqrt(mean_squared_error(true, preds))
+        r2 = r2_score(true, preds)
+        test_rmse_history.append(rmse)
+        test_r2_history.append(r2)
+
+        if epoch % log_every == 0:
+            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {avg_loss:.4f} | Test RMSE: {rmse:.4f} | R²: {r2:.4f}")
+
+        model.train()
+
+    return {
+        "train_loss": train_loss_history,
+        "test_rmse": test_rmse_history,
+        "test_r2": test_r2_history
+    }
+
+# Get model basics setup and ready
+input_dim = x_train_tensor.shape[1]
+output_dim = 1
+hidden_dims = [128, 64, 32]
+dropout_rate = 0.2
+
+model = MarMad_Neural_Net(input_dim, hidden_dims, output_dim, activation_fn=nn.GELU, dropout=dropout_rate).to(device)
+
+criterion = nn.MSELoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+
+# Training Loop
+metrics = train_nn_model(
+    model=model,
+    train_loader=train_loader,
+    test_loader=test_loader,
+    optimizer=optimizer,
+    scheduler=scheduler,
+    criterion=criterion,
+    epochs=50,       
+    device=device
+)
+
+plt.plot(metrics["train_loss"], label="Train Loss")
+plt.plot(metrics["test_rmse"], label="Test RMSE")
+plt.legend()
+plt.title("Training Metrics over Epochs")
+plt.xlabel("Epoch")
+plt.ylabel("Loss / RMSE")
+plt.show()
+
+Epoch 1/50 | Train Loss: 790.6216 | Test RMSE: 15.3766 | R²: -0.6225
+Epoch 2/50 | Train Loss: 398.9915 | Test RMSE: 19.5285 | R²: -1.6170
+Epoch 3/50 | Train Loss: 378.2483 | Test RMSE: 16.2871 | R²: -0.8203
+Epoch 4/50 | Train Loss: 334.8089 | Test RMSE: 16.3839 | R²: -0.8420
+Epoch 5/50 | Train Loss: 323.9289 | Test RMSE: 21.7547 | R²: -2.2476
+Epoch 6/50 | Train Loss: 304.2503 | Test RMSE: 19.5970 | R²: -1.6353
+Epoch 7/50 | Train Loss: 318.1246 | Test RMSE: 15.9600 | R²: -0.7479
+Epoch 8/50 | Train Loss: 296.2142 | Test RMSE: 20.4637 | R²: -1.8736
+Epoch 9/50 | Train Loss: 311.3775 | Test RMSE: 15.0516 | R²: -0.5546
+Epoch 10/50 | Train Loss: 281.8904 | Test RMSE: 16.3584 | R²: -0.8363
+Epoch 11/50 | Train Loss: 289.3026 | Test RMSE: 19.7081 | R²: -1.6653
+Epoch 12/50 | Train Loss: 288.7603 | Test RMSE: 14.9341 | R²: -0.5304
+Epoch 13/50 | Train Loss: 266.5861 | Test RMSE: 15.3338 | R²: -0.6135
+Epoch 14/50 | Train Loss: 275.5218 | Test RMSE: 14.7852 | R²: -0.5001
+Epoch 15/50 | Train Loss: 279.9378 | Test RMSE: 13.2991 | R²: -0.2137
+Epoch 16/50 | Train Loss: 283.3239 | Test RMSE: 17.8091 | R²: -1.1764
+Epoch 17/50 | Train Loss: 254.2846 | Test RMSE: 18.5424 | R²: -1.3593
+Epoch 18/50 | Train Loss: 266.8160 | Test RMSE: 22.0259 | R²: -2.3291
+Epoch 19/50 | Train Loss: 245.4235 | Test RMSE: 16.6571 | R²: -0.9040
+Epoch 20/50 | Train Loss: 256.0907 | Test RMSE: 21.2670 | R²: -2.1036
+Epoch 21/50 | Train Loss: 258.4105 | Test RMSE: 18.2165 | R²: -1.2771
+Epoch 22/50 | Train Loss: 255.5439 | Test RMSE: 20.1741 | R²: -1.7928
+Epoch 23/50 | Train Loss: 248.7306 | Test RMSE: 21.5485 | R²: -2.1863
+Epoch 24/50 | Train Loss: 248.8143 | Test RMSE: 18.5851 | R²: -1.3702
+Epoch 25/50 | Train Loss: 238.2588 | Test RMSE: 18.1784 | R²: -1.2676
+Epoch 26/50 | Train Loss: 244.2871 | Test RMSE: 19.0973 | R²: -1.5026
+Epoch 27/50 | Train Loss: 241.3501 | Test RMSE: 22.7705 | R²: -2.5580
+Epoch 28/50 | Train Loss: 236.0512 | Test RMSE: 21.7883 | R²: -2.2576
+Epoch 29/50 | Train Loss: 239.7000 | Test RMSE: 22.0943 | R²: -2.3498
+Epoch 30/50 | Train Loss: 234.4476 | Test RMSE: 16.6191 | R²: -0.8953
+Epoch 31/50 | Train Loss: 237.9760 | Test RMSE: 18.3899 | R²: -1.3207
+Epoch 32/50 | Train Loss: 250.8656 | Test RMSE: 18.1802 | R²: -1.2681
+Epoch 33/50 | Train Loss: 237.7487 | Test RMSE: 22.0486 | R²: -2.3360
+Epoch 34/50 | Train Loss: 229.0390 | Test RMSE: 21.3508 | R²: -2.1281
+Epoch 35/50 | Train Loss: 238.0147 | Test RMSE: 19.7073 | R²: -1.6651
+Epoch 36/50 | Train Loss: 238.5408 | Test RMSE: 18.5263 | R²: -1.3552
+Epoch 37/50 | Train Loss: 237.5392 | Test RMSE: 18.7218 | R²: -1.4052
+Epoch 38/50 | Train Loss: 226.9280 | Test RMSE: 19.7557 | R²: -1.6782
+Epoch 39/50 | Train Loss: 236.7947 | Test RMSE: 20.1378 | R²: -1.7828
+Epoch 40/50 | Train Loss: 242.5373 | Test RMSE: 20.5653 | R²: -1.9022
+Epoch 41/50 | Train Loss: 225.9848 | Test RMSE: 20.3613 | R²: -1.8449
+Epoch 42/50 | Train Loss: 237.6794 | Test RMSE: 19.6801 | R²: -1.6577
+Epoch 43/50 | Train Loss: 233.4824 | Test RMSE: 21.6850 | R²: -2.2268
+Epoch 44/50 | Train Loss: 229.7764 | Test RMSE: 20.2584 | R²: -1.8162
+Epoch 45/50 | Train Loss: 227.6999 | Test RMSE: 21.3900 | R²: -2.1396
+Epoch 46/50 | Train Loss: 224.4052 | Test RMSE: 21.7514 | R²: -2.2466
+Epoch 47/50 | Train Loss: 232.5934 | Test RMSE: 20.8829 | R²: -1.9925
+Epoch 48/50 | Train Loss: 238.1351 | Test RMSE: 20.8315 | R²: -1.9778
+Epoch 49/50 | Train Loss: 231.6536 | Test RMSE: 20.8430 | R²: -1.9811
+Epoch 50/50 | Train Loss: 220.2803 | Test RMSE: 20.9390 | R²: -2.0086

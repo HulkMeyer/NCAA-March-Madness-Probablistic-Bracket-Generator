@@ -1,0 +1,432 @@
+Support Vector Machines
+Again, going to start with the main bracket data set to try and find the best parameters. Then apply that model to the rest of them different sets. Will also use Permutation of Variables to create a SVM Data Set. Going to use LiquidSVM to allow SVM to run faster on the CPU. There was not an easy way to do it without installing multiple pieces of software. A C++, Python friendly SVM should work well.
+
+
+# Drop non-feature columns
+x_train_bracket_data_set = train_bracket_data_set.drop(columns=['Year', 'Score', 'Team', 'Opponent', 'Team No', 'Result', 'Champion', 'Opponenet Score'])
+y_train_bracket_data_set = train_bracket_data_set['Score']
+x_test_bracket_data_set = test_bracket_data_set.drop(columns=['Year', 'Score', 'Team', 'Opponent', 'Team No', 'Result', 'Champion', 'Opponenet Score'])
+y_test_bracket_data_set = test_bracket_data_set['Score']
+
+scaler = StandardScaler()
+
+x_train_bracket_data_set_scaled = scaler.fit_transform(x_train_bracket_data_set.values)
+x_test_bracket_data_set_scaled = scaler.transform(x_test_bracket_data_set.values)
+
+y_train_bracket_data_set_scaled = scaler.fit_transform(y_train_bracket_data_set.values.reshape(-1, 1))
+y_test_bracket_data_set_scaled = scaler.fit_transform(y_test_bracket_data_set.values.reshape(-1, 1))
+
+# Use unscaled data for liquidSVM
+X_train = x_train_bracket_data_set_scaled
+X_test = x_test_bracket_data_set_scaled
+y_train = y_train_bracket_data_set.values.reshape(-1, 1)
+y_test = y_test_bracket_data_set.values.reshape(-1, 1)
+
+# Wrap in Bunch
+train_data = Bunch(data=X_train, target=y_train)
+
+# Grid Components
+kernel_list = ['rbf', 'poly', 'sigmoid']
+gamma_list = [1e-4, 1e-3, 1e-2]
+lambda_list = [1e-6, 1e-5, 1e-4]
+poly_degrees = [2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+#loss_list = ['L2']
+
+from sklearn.metrics import mean_squared_error, r2_score
+
+best_model_results = []
+
+def run_one(kernel, gamma, lam, degree=None):
+    params = {
+      'data': train_data,
+      'display': 0,
+      'threads': 4,
+      'kernel_type': kernel,
+      'loss_function': 'L2',
+      'gamma_range': [gamma],
+      'lambda_range': [lam]
+    }
+    if kernel == 'poly':
+        params['poly_degree_range'] = [degree]
+
+    model = lsSVM(**params)
+    y_pred, _ = model.test(X_test, y_test)
+    y_pred = y_pred.flatten()
+    y_true = y_test.flatten()
+
+    mse = mean_squared_error(y_true, y_pred)
+    r2  = r2_score(y_true, y_pred)
+    best_model_results.append((mse, r2, kernel, degree, gamma, lam))
+    model.clean()
+
+# Main loops
+for kernel in ['rbf','poly','sigmoid']:
+  for γ in gamma_list:
+    for λ in lambda_list:
+      if kernel == 'poly':
+        for degree in poly_degrees:
+          run_one(kernel, γ, λ, degree)
+            else:
+                run_one(kernel, γ, λ) 
+
+# Sort once, then report
+best_model_results.sort(key=lambda x: x[1], reverse=True)
+
+best_mse, best_r2, best_kernel, best_deg, best_gamma, best_lambda = best_model_results[0]
+print("Best Model:")
+print(f" Kernel={best_kernel}, Degree={best_deg}, γ={best_gamma:.1e}, λ={best_lambda:.1e}")
+print(f" MSE={best_mse:.4f}, R²={best_r2:.4f}\n")
+
+print("Top 5 Configurations:")
+for i, rec in enumerate(best_model_results[:5], start=1):
+    mse,r2,kern,deg,gam,lam = rec
+    print(f"{i}. {kern:7s} deg={deg or '-':2s}  γ={gam:.1e} λ={lam:.1e} → R²={r2:.4f}")
+
+# Residual Diagnostics
+residuals = y_test.flatten() - result.flatten()
+
+plt.figure(figsize=(10, 4))
+
+plt.subplot(1, 2, 1)
+plt.hist(residuals, bins=30, color='skyblue', edgecolor='black')
+plt.title("Residuals Histogram")
+plt.xlabel("Error")
+plt.ylabel("Frequency")
+
+plt.subplot(1, 2, 2)
+plt.scatter(result, residuals, alpha=0.5)
+plt.axhline(0, color='red', linestyle='--')
+plt.title("Residuals vs. Predicted")
+plt.xlabel("Predicted Score")
+plt.ylabel("Residual")
+
+plt.tight_layout()
+plt.show()
+
+df_poly = pd.DataFrame([r for r in best_model_results if r[2] == 'poly'], columns=['MSE', 'R2', 'Kernel', 'Degree', 'Gamma', 'Lambda'])
+plt.figure(figsize=(10, 5))
+plt.plot(df_poly['Degree'], df_poly['R2'], marker='o')
+plt.title("R² vs Polynomial Degree")
+plt.xlabel("Degree")
+plt.ylabel("R²")
+plt.grid(True)
+plt.show()
+
+plt.scatter(y_test, y_pred, alpha=0.5)
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+plt.xlabel("Actual")
+plt.ylabel("Predicted")
+plt.title("Residual Plot")
+plt.grid(True)
+plt.show()
+
+
+
+
+Type 2
+# --- 1) Prepare your data (features scaled, raw target) ---
+# Drop non-feature columns
+x_cols = ['Year','Score','Team','Opponent','Team No','Result','Champion','Opponenet Score']
+X_train = train_bracket_data_set.drop(columns=x_cols).values
+X_test  = test_bracket_data_set .drop(columns=x_cols).values
+
+# scale only features
+feature_scaler = StandardScaler().fit(X_train)
+X_train_scaled = feature_scaler.transform(X_train)
+X_test_scaled  = feature_scaler.transform(X_test)
+
+# keep raw target for LS-SVM (or scale+inverse-transform later)
+y_train = train_bracket_data_set['Score'].values.reshape(-1,1)
+y_test  = test_bracket_data_set['Score'].values.reshape(-1,1)
+
+# LS-SVM wants a Bunch
+train_data = Bunch(data=X_train_scaled, target=y_train)
+
+# --- 2) Hyper-parameter lists ---
+kernel_list   = ['rbf','poly','sigmoid']
+gamma_list    = [1e-4, 1e-3, 1e-2]
+lambda_list   = [1e-6, 1e-5, 1e-4]
+poly_degrees  = list(range(2, 16))
+
+best_model_results = []
+
+# --- 3) Single-run helper that prints the params it actually got ---
+def run_one(kernel, gamma, lam, degree=None):
+    # 1) Log the exact inputs you’re passing into lsSVM
+    print(f">>> lsSVM inputs → kernel={kernel}, γ={gamma:.1e}, λ={lam:.1e}, degree={degree}")
+
+    # 2) Build the parameter dict with the correct argument names
+    params = {
+        'data'          : train_data,
+        'display'       : 0,
+        'threads'       : 4,
+        'kernel_type'   : kernel,
+        'loss_function' : 'L2',
+        'gamma_list'    : [gamma],
+        'lambda_list'   : [lam],
+    }
+    if kernel == 'poly':
+        params['poly_degree_list'] = [degree]
+
+    # 3) Instantiate the model (no more params_ references here!)
+    model = lsSVM(**params)
+
+    # 4) (Optional) Peek at what methods/attributes lsSVM actually has
+    #    This will never crash—even if get_params() doesn’t exist—
+    #    because hasattr() protects you.
+    attrs = [a for a in dir(model) if not a.startswith('_')]
+    print(" → lsSVM attrs:", attrs[:10], "…")  # show first 10 attrs
+    if hasattr(model, 'get_params'):
+        print(" → get_params():", model.get_params())
+
+    # 5) Run prediction and record scores
+    y_pred, _ = model.test(X_test_scaled, y_test)
+    y_pred = y_pred.flatten()
+    y_true = y_test.flatten()
+
+    mse = mean_squared_error(y_true, y_pred)
+    r2  = r2_score(y_true, y_pred)
+
+    best_results.append((r2, mse, kernel, degree, gamma, lam))
+    model.clean()
+
+
+
+# --- 4) True grid-search (not hard-coded!) ---
+for kernel in kernel_list:
+    for gamma in gamma_list:
+        for lam in lambda_list:
+            if kernel == 'poly':
+                for deg in poly_degrees:
+                    run_one(kernel, gamma, lam, degree=deg)
+            else:
+                run_one(kernel, gamma, lam)
+
+
+# --- 5) Sort by R² descending & report ---
+best_model_results.sort(key=lambda x: x[0], reverse=True)
+best_r2, best_mse, best_kernel, best_deg, best_gamma, best_lambda = best_model_results[0]
+
+print("\n=== Best Model ===")
+print(f"kernel={best_kernel}, degree={best_deg}, γ={best_gamma:.1e}, λ={best_lambda:.1e}")
+print(f"MSE={best_mse:.4f}, R²={best_r2:.4f}\n")
+
+print("Top 5 Configurations by R²:")
+for idx, (r2, mse, kern, deg, gam, lam) in enumerate(best_model_results[:5], 1):
+    print(f"{idx}. {kern:7s} deg={deg or '-':2s}  γ={gam:.1e} λ={lam:.1e} → R²={r2:.4f}, MSE={mse:.2f}")
+
+
+
+type 3
+# 1) Prepare your data
+x_cols = ['Year','Score','Team','Opponent','Team No','Result','Champion','Opponenet Score']
+X_train = train_bracket_data_set.drop(columns=x_cols).values
+X_test  = test_bracket_data_set .drop(columns=x_cols).values
+
+# scale features
+scaler = StandardScaler().fit(X_train)
+X_train_scaled = scaler.transform(X_train)
+X_test_scaled  = scaler.transform(X_test)
+
+y_train = train_bracket_data_set['Score'].values.reshape(-1,1)
+y_test  = test_bracket_data_set ['Score'].values.reshape(-1,1)
+
+train_data = Bunch(data=X_train_scaled, target=y_train)
+
+# 2) Hyper‐param lists
+kernel_list  = ['rbf','poly','sigmoid']
+gamma_list   = [1e-4, 1e-3, 1e-2]
+cost_list  = [1e-6, 1e-5, 1e-4]
+poly_degrees = list(range(2,16))
+
+best_results = []
+
+# 3) Minimal run_one()
+def run_one(kernel, gamma, lam, degree=None):
+    print(f">>> lsSVM inputs → kernel={kernel}, γ={gamma:.1e}, λ={lam:.1e}, degree={degree}")
+    # build the params dict with correct names
+    params = {
+        'data'          : train_data,
+        'display'       : 0,
+        'threads'       : 4,
+        'kernel_type'   : kernel,
+        'loss_function' : 'L2',
+        'gammas'        : [gamma],
+        'costs'         : [cost]
+    }
+    if kernel == 'poly':
+        params['degrees'] = [degree]
+
+    # instantiate, test, record
+    model = lsSVM(**params)
+    y_pred, _ = model.test(X_test_scaled, y_test)
+    mse = mean_squared_error(y_test.flatten(), y_pred.flatten())
+    r2  = r2_score(    y_test.flatten(), y_pred.flatten())
+    best_model_results.append((r2, mse, kernel, degree, gamma, cost))
+    model.clean()
+
+# 4) True grid‐search loop
+for kern in kernel_list:
+    for g in gamma_list:
+        for l in lambda_list:
+            if kern == 'poly':
+                for d in poly_degrees:
+                    run_one(kern, g, l, degree=d)
+            else:
+                run_one(kern, g, l)
+
+# 5) Sort & report
+best_results.sort(key=lambda x: x[0], reverse=True)
+best_r2, best_mse, best_kernel, best_deg, best_gamma, best_lambda = best_results[0]
+print(f"Best → kernel={best_kernel}, degree={best_deg}, γ={best_gamma:.1e}, λ={best_lambda:.1e}")
+print(f"MSE={best_mse:.4f}, R²={best_r2:.4f}")
+
+
+Type 4
+from sklearn.preprocessing import StandardScaler
+from sklearn.utils import Bunch
+from sklearn.metrics     import mean_squared_error, r2_score
+from liquidSVM          import lsSVM
+
+# 1) Prepare your data
+x_cols = ['Year','Score','Team','Opponent','Team No','Result','Champion','Opponenet Score']
+X_train = train_bracket_data_set.drop(columns=x_cols).values
+X_test  = test_bracket_data_set .drop(columns=x_cols).values
+
+scaler       = StandardScaler().fit(X_train)
+X_train_s    = scaler.transform(X_train)
+X_test_s     = scaler.transform(X_test)
+
+y_train      = train_bracket_data_set['Score'].values.reshape(-1,1)
+y_test       = test_bracket_data_set ['Score'].values.reshape(-1,1)
+
+train_data   = Bunch(data=X_train_s, target=y_train)
+
+# 2) Your hyper-param grid
+kernel_list  = ['rbf','poly','sigmoid']
+gamma_list   = [1e-4, 1e-3, 1e-2]
+cost_list    = [1e-6, 1e-5, 1e-4]      # “costs” = 1/λ  
+poly_degrees = list(range(2, 16))
+
+# 3) Collector for results
+best_results = []
+
+# 4) Single‐run helper
+def run_one(kernel, gamma, cost, degree=None):
+    # 4a) Log exactly what you’re trying
+    print(f">>> Trying kernel={kernel}, γ={gamma:.1e}, cost={cost:.1e}, deg={degree}")
+    
+    # 4b) Build the param dict with the exact kwarg names liquidSVM expects
+    params = {
+        'data'          : train_data,
+        'kernel_type'   : kernel,
+        'loss_function' : 'L2',
+        'gammas'        : [gamma],
+        'costs'         : [cost],
+        'threads'       : 4,
+        'display'       : 0
+    }
+    if kernel == 'poly':
+        params['degrees'] = [degree]
+
+    # 4c) Train & test
+    model = lsSVM(**params)
+    y_pred, _ = model.test(X_test_s, y_test)
+    y_pred    = y_pred.flatten()
+    y_true    = y_test.flatten()
+
+    # 4d) Score and record
+    mse = mean_squared_error(y_true, y_pred)
+    r2  = r2_score(y_true, y_pred)
+    best_results.append((r2, mse, kernel, degree, gamma, cost))
+    model.clean()
+
+# 5) True grid search
+for kern in kernel_list:
+    for g in gamma_list:
+        for c in cost_list:
+            if kern == 'poly':
+                for d in poly_degrees:
+                    run_one(kern, g, c, degree=d)
+            else:
+                run_one(kern, g, c)
+
+# 6) Sort & report the winner
+best_results.sort(key=lambda x: x[0], reverse=True)
+best_r2, best_mse, best_k, best_deg, best_γ, best_cost = best_results[0]
+
+print("\n=== Best Model ===")
+print(f" kernel = {best_k}, degree={best_deg}, γ={best_γ:.1e}, cost={best_cost:.1e}")
+print(f" MSE    = {best_mse:.4f}, R²={best_r2:.4f}")
+print("\nTop 5 configs by R²:")
+for i, (r2, mse, k, deg, g, c) in enumerate(best_results[:5], 1):
+    print(f" {i}. {k:7s} deg={deg or '-':2s}  γ={g:.1e} cost={c:.1e} → R²={r2:.4f}, MSE={mse:.2f}")
+
+
+2. Update Your Bracket Code to Load PyTorch Model:
+pythonimport torch
+import torch.nn as nn
+
+# Define your LinearModel class (needed for loading)
+class LinearModel(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(LinearModel, self).__init__()
+        self.linear = nn.Linear(input_dim, output_dim)
+    
+    def forward(self, x):
+        return self.linear(x)
+
+# Load the model
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+input_dim = 15  # Adjust based on your feature count
+model = LinearModel(input_dim=input_dim, output_dim=1).to(device)
+
+model_path = r"C:\Users\coltm\OneDrive\Documents\Academics\MSDS\DTSC 691 - Capstone Project\Machine Learning Project\Data Sets\Bracket Build Data Sets\models\linact_linfea_data.pth"
+model.load_state_dict(torch.load(model_path, map_location=device))
+model.eval()
+3. Update simulate_game Function for PyTorch:
+pythondef simulate_game(team1, team2, model, df, variation=True, noise_std=3.0):
+    # Enrich teams with stats
+    team1 = enrich_team(team1, df)
+    team2 = enrich_team(team2, df)
+
+    # Extract features (you'll need to use the same features as training)
+    team1_features = extract_features(team1)
+    team2_features = extract_features(team2)
+    
+    # Create input tensors for each team
+    team1_tensor = torch.tensor([list(team1_features.values())], dtype=torch.float32).to(device)
+    team2_tensor = torch.tensor([list(team2_features.values())], dtype=torch.float32).to(device)
+    
+    # Get predictions
+    with torch.no_grad():
+        team1_pred = model(team1_tensor).cpu().numpy()[0][0]
+        team2_pred = model(team2_tensor).cpu().numpy()[0][0]
+    
+    # Add variation if requested
+    if variation:
+        team1_pts_scored = team1_pred + np.random.normal(0, noise_std)
+        team2_pts_scored = team2_pred + np.random.normal(0, noise_std)
+        
+        # Keep scores reasonable
+        team1_pts_scored = np.clip(team1_pts_scored, 45, 110)
+        team2_pts_scored = np.clip(team2_pts_scored, 45, 110)
+    else:
+        team1_pts_scored = team1_pred
+        team2_pts_scored = team2_pred
+
+    # Determine winner
+    winner = team1 if team1_pts_scored > team2_pts_scored else team2
+    
+    print(f"{team1.name} ({team1_pts_scored:.1f}) vs {team2.name} ({team2_pts_scored:.1f}) → Winner: {winner.name}")
+    
+    return winner
+4. Update extract_features Function:
+You'll need to make sure extract_features returns the same features in the same order as your training data:
+pythondef extract_features(team: Team) -> dict:
+    # Use the same features you used for training
+    training_features = ['Seed', 'Opponent Seed', 'NetRtg', 'ORtg_y', 'Bench_BPR', 
+                        'DRtg', 'Bench_OBPR', 'SoS_NetRtg', 'eFG%', 'Starting5_BPR', 
+                        'FGA', 'SoS_ORtg', '3PA', 'TS%', 'ORtg_x']
+    
+    return {f: team.stats[f] for f in training_features}

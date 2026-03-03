@@ -1,0 +1,62 @@
+Random Forest Model
+
+x_train_bracket_data_set = train_bracket_data_set.drop(columns=['Year', 'Score', 'Team', 'Opponent', 'Team No', 'Result', 'Champion'])
+y_train_bracket_data_set = train_bracket_data_set['Score']
+x_test_bracket_data_set = test_bracket_data_set.drop(columns=['Year', 'Score', 'Team', 'Opponent', 'Team No', 'Result', 'Champion'])
+y_test_bracket_data_set = test_bracket_data_set['Score']
+
+scaler = StandardScaler()
+
+x_train_bracket_data_set_scaled = scaler.fit_transform(x_train_bracket_data_set.values)
+y_train_bracket_data_set_scaled = scaler.fit_transform(y_train_bracket_data_set.values.reshape(-1, 1))
+x_test_bracket_data_set_scaled = scaler.fit_transform(x_test_bracket_data_set.values)
+y_test_bracket_data_set_scaled  = scaler.fit_transform(y_test_bracket_data_set.values.reshape(-1, 1))
+
+# Going to start with the unscaled data from the bracket_data_set
+X_train = x_train_bracket_data_set
+X_test = x_test_bracket_data_set
+y_train = y_train_bracket_data_set
+y_test = y_test_bracket_data_set
+# 78 features
+
+
+# Define the Random Forest with base settings
+rf = RandomForestRegressor(  
+    n_estimators=100,
+    max_depth=None,
+    min_samples_split=2,
+    min_samples_leaf=1,
+    max_features=.9,
+    random_state=42,
+    n_jobs=-1
+)
+
+# Hyperparameter tuning using GridSearchCV
+param_grid = {
+    'n_estimators': [500],
+    'max_depth': [25],
+    'min_samples_split': [3],
+    'max_features': [.9]
+}
+
+grid_search = GridSearchCV(estimator=rf, param_grid=param_grid, cv=5, n_jobs=-1, verbose=2)
+
+grid_search.fit(X_train, y_train)
+rf_bracket_data = grid_search.best_estimator_ # Model to save out with pickle
+# Ensure the folder exists
+os.makedirs("models", exist_ok=True)
+
+# Save the model
+model_path = r"C:\Users\coltm\OneDrive\Documents\Academics\MSDS\DTSC 691 - Capstone Project\Machine Learning Project\Data Sets\Bracket Build Data Sets\models\rf_bracket_data.pkl"
+with open(model_path, "wb") as f:
+    pickle.dump(rf_bracket_data, f)
+
+
+
+
+# Generate predictions
+y_pred = rf_bracket_data.predict(X_test)
+
+# Evaluate
+mse = mean_squared_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)

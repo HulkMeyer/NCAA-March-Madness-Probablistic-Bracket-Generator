@@ -1,0 +1,90 @@
+XGBoost Model
+
+# Going to start with the unscaled data from the bracket_data_set
+x_train_bracket_data_set = train_bracket_data_set.drop(columns=['Year', 'Score', 'Team', 'Opponent', 'Team No', 'Result', 'Champion'])
+y_train_bracket_data_set = train_bracket_data_set['Score']
+x_test_bracket_data_set = test_bracket_data_set.drop(columns=['Year', 'Score', 'Team', 'Opponent', 'Team No', 'Result', 'Champion'])
+y_test_bracket_data_set = test_bracket_data_set['Score']
+
+scaler = StandardScaler()
+
+x_train_bracket_data_set_scaled = scaler.fit_transform(x_train_bracket_data_set.values)
+y_train_bracket_data_set_scaled = scaler.fit_transform(y_train_bracket_data_set.values.reshape(-1, 1))
+x_test_bracket_data_set_scaled = scaler.fit_transform(x_test_bracket_data_set.values)
+y_test_bracket_data_set_scaled  = scaler.fit_transform(y_test_bracket_data_set.values.reshape(-1, 1))
+
+# Going to start with the unscaled data from the bracket_data_set
+X_train = x_train_bracket_data_set
+X_test = x_test_bracket_data_set
+y_train = y_train_bracket_data_set
+y_test = y_test_bracket_data_set
+
+# Create arrays on GPU
+X_train_gpu = cp.array(X_train)
+y_train_gpu = cp.array(y_train)
+X_test_gpu = cp.array(X_test)
+y_test_gpu = cp.array(y_test)
+
+
+# Initialize the GPU-enabled XGBoost regressor 
+xgb_model = XGBRegressor(
+    tree_method = 'hist',  
+    device = 'cuda',
+    objective = 'reg:squarederror',
+    random_state = 42,
+    n_jobs = -1
+)
+
+# Define your hyperparameter grid 
+param_grid = {
+    'n_estimators': [500],
+    'max_depth': [22],
+    'learning_rate': [.0075],
+    'subsample': [0.7],
+    'colsample_bytree': [0.65]
+}
+
+'''
+Note:  This below code came about as a result of initially warnings about numpy stored on cpu and xgboost forcing it into gpu.  This resulted in extreamely
+high memory and cpu usage, ultimately crashing my computer.  Research concluded that cupy would offer a solution by putting the information on the gpu
+in a gpu friendly form.  However, GridSearch did not like this and I ended up with the same issue as before.  This lead to the use of a for loop and itertools
+to work through the hyperparameters in a fashion that would work on the gpu and not crash my cpu.  For reference setup is a 3080ti gpu, RX 5950 CPU and 96GB of RAM.
+'''
+best_score = float('inf')
+best_r2 = None
+best_model = None
+best_params = None
+
+# Loop through all combinations of above hyperparameters
+for combo in itertools.product(*param_grid.values()):
+    params = dict(zip(param_grid.keys(), combo))
+    model = XGBRegressor(
+        tree_method='hist',
+        device='cuda',
+        objective='reg:squarederror',
+        random_state=42,
+        n_jobs=-1,
+        **params
+    )
+# Train using the cupy data
+    model.fit(X_train_gpu, y_train_gpu)
+# Predict and convert predictions to cupy arrays
+    preds = model.predict(X_test_gpu)
+# MSE calculation
+    mse = cp.mean((y_test_gpu - cp.array(preds)) ** 2)
+# r2 calculations
+    preds_gpu = cp.array(preds)
+    ss_res = cp.sum((y_test_gpu - preds_gpu) ** 2)
+    ss_tot = cp.sum((y_test_gpu - cp.mean(y_test_gpu)) ** 2)
+    r2 = 1 - ss_res / ss_tot
+
+# Update best if model parameters are better than last generated
+    if mse < best_score:
+        best_score = mse
+        best_r2 = r2
+        best_model = model
+        best_params = params
+
+print("Best Parameters:", best_params)
+print("Best GPU MSE:", best_score)
+print("Best GPU R2:", best_r2)

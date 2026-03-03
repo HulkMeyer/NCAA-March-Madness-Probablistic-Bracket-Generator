@@ -1,0 +1,66 @@
+PyTorch Update Your Bracket Code to Load PyTorch Model:
+
+
+# Define your LinearModel class (needed for loading)
+class LinearModel(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(LinearModel, self).__init__()
+        self.linear = nn.Linear(input_dim, output_dim)
+    
+    def forward(self, x):
+        return self.linear(x)
+
+# Load the model
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+input_dim = 15  # Adjust based on your feature count
+model = LinearModel(input_dim=input_dim, output_dim=1).to(device)
+
+model_path = r"C:\Users\coltm\OneDrive\Documents\Academics\MSDS\DTSC 691 - Capstone Project\Machine Learning Project\Data Sets\Bracket Build Data Sets\models\linact_linfea_data.pth"
+model.load_state_dict(torch.load(model_path, map_location=device))
+model.eval()
+3. Update simulate_game Function for PyTorch:
+pythondef simulate_game(team1, team2, model, df, variation=True, noise_std=3.0):
+    # Enrich teams with stats
+    team1 = enrich_team(team1, df)
+    team2 = enrich_team(team2, df)
+
+    # Extract features (you'll need to use the same features as training)
+    team1_features = extract_features(team1)
+    team2_features = extract_features(team2)
+    
+    # Create input tensors for each team
+    team1_tensor = torch.tensor([list(team1_features.values())], dtype=torch.float32).to(device)
+    team2_tensor = torch.tensor([list(team2_features.values())], dtype=torch.float32).to(device)
+    
+    # Get predictions
+    with torch.no_grad():
+        team1_pred = model(team1_tensor).cpu().numpy()[0][0]
+        team2_pred = model(team2_tensor).cpu().numpy()[0][0]
+    
+    # Add variation if requested
+    if variation:
+        team1_pts_scored = team1_pred + np.random.normal(0, noise_std)
+        team2_pts_scored = team2_pred + np.random.normal(0, noise_std)
+        
+        # Keep scores reasonable
+        team1_pts_scored = np.clip(team1_pts_scored, 45, 110)
+        team2_pts_scored = np.clip(team2_pts_scored, 45, 110)
+    else:
+        team1_pts_scored = team1_pred
+        team2_pts_scored = team2_pred
+
+    # Determine winner
+    winner = team1 if team1_pts_scored > team2_pts_scored else team2
+    
+    print(f"{team1.name} ({team1_pts_scored:.1f}) vs {team2.name} ({team2_pts_scored:.1f}) → Winner: {winner.name}")
+    
+    return winner
+4. Update extract_features Function:
+You'll need to make sure extract_features returns the same features in the same order as your training data:
+pythondef extract_features(team: Team) -> dict:
+    # Use the same features you used for training
+    training_features = ['Seed', 'Opponent Seed', 'NetRtg', 'ORtg_y', 'Bench_BPR', 
+                        'DRtg', 'Bench_OBPR', 'SoS_NetRtg', 'eFG%', 'Starting5_BPR', 
+                        'FGA', 'SoS_ORtg', '3PA', 'TS%', 'ORtg_x']
+    
+    return {f: team.stats[f] for f in training_features}
