@@ -1,0 +1,25 @@
+# Core Data Science
+numpy==1.26.4
+pandas==2.1.4
+scikit-learn
+scipy
+matplotlib
+seaborn
+
+# Machine Learning
+torch
+torchvision
+torchaudio
+xgboost
+cupy-cuda12x  # Match this to your specific CUDA version (11x or 12x)
+rapidfuzz
+statsmodels
+
+# Web Deployment
+flask
+flask-sqlalchemy
+
+# File Handling
+pyarrow
+openpyxl
+pickle5

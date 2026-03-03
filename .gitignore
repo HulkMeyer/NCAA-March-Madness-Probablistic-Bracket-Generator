@@ -1,0 +1,41 @@
+# === Python Environment ===
+# Ignore the virtual environment and all executable binaries
+venv/
+env/
+*.exe
+*.dll
+*.so
+*.pyc
+__pycache__/
+
+# === IDE Specific (PyCharm / VS Code) ===
+# Ignore PyCharm metadata and workspace settings
+.idea/
+.vscode/
+*.iml
+*.xml
+# Exception: keep the project's own config if needed, 
+# but usually .idea is better left out of Git.
+
+# === Data & Databases ===
+# GitHub has a 100MB limit. 
+# We ignore the raw data and large DB files to keep the repo light.
+data/raw/
+data/intermediate/
+*.db
+*.sqlite3
+*.csv
+
+# === Jupyter Notebooks ===
+# Ignore the hidden checkpoint folders
+.ipynb_checkpoints/
+
+# === OS Specific ===
+.DS_Store
+Thumbs.db
+
+# === Models ===
+# If your model weights (.pth, .pkl) are very large, ignore them here 
+# and provide a download link in the README instead.
+# models/*.pth
+# models/*.pkl
