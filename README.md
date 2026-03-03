@@ -65,7 +65,7 @@ This platform is a comprehensive data science solution designed to predict and s
 
 * **XGBoost: Gradient Boosted Decision Trees for regressive analysis.
 
-##⚡ High-Performance Computing
+## ⚡ High-Performance Computing
 * **CUDA 12.x: Leveraged for GPU-accelerated model training and matrix computations.
 
 * **CuPy: NumPy-compatible array library for GPU-based calculations.
